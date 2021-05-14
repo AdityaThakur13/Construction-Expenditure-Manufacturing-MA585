@@ -1,0 +1,169 @@
+---
+title: "project3"
+author: "Aditya Thakur"
+date: "25/04/2021"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Importing Dataset:
+
+```{r}
+library(tidyverse)
+library(readr)
+library(xts)
+library(TSA)
+library(lubridate)
+library(forecast)
+library(MuMIn)
+manu<-read_csv("data/TLMFGCON.csv")
+names(manu)=c("DATE","Amount")
+manu %>% head(5)
+plot(manu,type="l",main="Plot of Expenditure on Manufacturing Sector (Construction) from 2002-2021")
+
+```
+
+General Plot & train test split
+
+```{r}
+
+manu_train<-manu[1:190,]
+manu_test<-manu[191:230,]
+manu_train<-ts(manu_train$Amount,frequency = 12)
+manu_train
+
+
+```
+
+Variance Stabilizer:
+
+```{r}
+manu_train <-log(manu_train)
+
+plot(manu_train,type="l",main="manu_train_log")
+```
+
+Additive Decomposition:
+
+```{r}
+decomp.plot <- function(x, main = NULL, ...) 
+{ 
+  if(is.null(main)) 
+    main <- paste("Decomposition of", x$type, "time series") 
+  plot(cbind(observed = x$random + if (x$type == "additive") 
+    x$trend + x$seasonal 
+    else x$trend * x$seasonal, trend = x$trend, seasonal = x$seasonal, 
+    random = x$random), main = main, ...) 
+} 
+z=decompose(manu_train,type="additive") 
+decomp.plot(z,main="Additive Decomposition of Manufacturing Data") 
+
+
+```
+
+Testing for stationarity via ADF:
+
+```{r}
+library(tseries)
+adf.test(manu_train,k=12)
+
+```
+
+Elimination of Trend and Seasonality via differencing:
+
+```{r}
+
+par(mfrow=c(1,2)) 
+plot(manu_train,main="Non-Differenced") 
+diff_oz=diff(diff(manu_train),12)
+plot(ts(diff_oz),main="Differenced")
+adf.test(diff_oz,k=12)
+acf(diff_oz,lag.max=48,main="ACF Plot")
+pacf(diff_oz,lag.max=48,main="PACF Plot")
+
+
+```
+
+Model Selection:
+
+```{r}
+fit=Arima(manu_train,order=c(1,1,3),seasonal=list(order=c(0,1,2),period=12))
+fit
+AICc(fit)
+tsdiag(fit)
+fcast=forecast(fit,h=40)
+plot(fcast)
+qqnorm(residuals(fit))
+qqline(residuals(fit))
+```
+
+
+
+
+Auto Arima:
+
+```{r}
+fit=auto.arima(manu_train)
+fit
+
+```
+
+
+Holt Winters:
+
+```{r}
+HW=HoltWinters(manu_train)
+HW_fore=forecast(HW,h=40,seasonal="multiplicative")
+HW_fore
+plot(HW_fore)
+
+```
+
+Evaluation of Forecasts:
+
+```{r}
+#HW
+hwerr=manu_test$Amount-HW_fore$mean
+hwmae=mean(abs(hwerr))
+hwrmse=sqrt(mean(hwerr^2))
+hwmape=mean(abs((hwerr*100)/manu_test$Amount))
+hwmae
+hwrmse
+hwmape
+
+#arima
+
+arimafcast=forecast(fit,h=50)
+arimaerr=manu_test$Amount-arimafcast$mean
+arimamae=mean(abs(arimaerr))
+arimarmse=sqrt(mean(arimaerr^2))
+arimamape=mean(abs((arimaerr*100)/manu_test$Amount))
+arimamae
+arimarmse
+arimamape
+  
+
+```
+
+Subset ARMA:
+
+```{r}
+fit1=armasubsets(y=diff_oz,nar=15,nma=15,y.name = "oz")
+plot(fit1)
+
+
+fit2=Arima(manu_train,
+           order=c(0,1,15),
+           seasonal=list(order=c(1,1,2),period=12),
+           fixed=c(rep(0,5),NA,rep(0,8),NA),
+           lambda=0)
+        
+
+```
+
